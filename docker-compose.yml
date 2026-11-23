@@ -1,0 +1,52 @@
+# Local stack: app, queue worker, PostgreSQL and Redis.
+#
+#   cp .env.example .env        # then set APP_KEY (see README) and DB_PASSWORD
+#   docker compose up --build
+#   docker compose exec app php artisan migrate
+#
+# To run only the services and use PHP/Node from your machine:
+#   docker compose up postgres redis
+services:
+  app:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    env_file: .env
+    environment: { DB_HOST: postgres, REDIS_HOST: redis }
+    ports: ["8000:8000"]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+    volumes: ["storage:/var/www/app/storage"]
+
+  worker:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: php artisan queue:work redis --sleep=1 --tries=1 --timeout=300
+    env_file: .env
+    environment: { DB_HOST: postgres, REDIS_HOST: redis }
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+    volumes: ["storage:/var/www/app/storage"]
+    # The worker runs the scanners on untrusted source text. Keep it boxed in.
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 3g
+    pids_limit: 512
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-codesentinel}
+      POSTGRES_USER: ${DB_USERNAME:-codesentinel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-codesentinel}"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+
+volumes:
+  pgdata:
+  storage:

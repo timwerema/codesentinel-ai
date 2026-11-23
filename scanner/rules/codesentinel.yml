@@ -1,0 +1,240 @@
+# CodeSentinel's bundled Semgrep rules. They run offline: nothing is fetched from the Semgrep registry.
+# metadata.category  -> security | logic | maintainability
+# metadata.fix       -> shown to the user as the remediation
+rules:
+  # ---------- Python ----------
+  - id: py-subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: A command is run through the shell (shell=True). If any part of the command comes from user input, an attacker can run their own commands.
+    metadata: {category: security, cwe: "CWE-78", fix: "Pass the command as a list of arguments and leave shell=False (the default), e.g. subprocess.run(['ls', path])."}
+    pattern-either:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+  - id: py-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: eval/exec runs a string as code. With untrusted input this is remote code execution.
+    metadata: {category: security, cwe: "CWE-95", fix: "Parse the input instead (json.loads, ast.literal_eval for literals) or map allowed names to functions."}
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+  - id: py-pickle-load
+    languages: [python]
+    severity: ERROR
+    message: Unpickling data can run arbitrary code. Never unpickle data you did not create yourself.
+    metadata: {category: security, cwe: "CWE-502", fix: "Use a data-only format such as JSON for anything that crosses a trust boundary."}
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: yaml.load(...)
+  - id: py-sql-string-format
+    languages: [python]
+    severity: ERROR
+    message: A SQL query is built with string formatting. Values placed into the string this way allow SQL injection.
+    metadata: {category: security, cwe: "CWE-89", fix: "Use query parameters: cursor.execute('SELECT ... WHERE name = %s', (name,))."}
+    pattern-either:
+      - pattern: $C.execute("..." % ...)
+      - pattern: $C.execute("...".format(...))
+      - pattern: $C.execute(f"...")
+      - pattern: $C.execute("..." + ...)
+  - id: py-weak-hash
+    languages: [python]
+    severity: WARNING
+    message: MD5 and SHA-1 are broken for security use (passwords, signatures, integrity against an attacker).
+    metadata: {category: security, cwe: "CWE-327", fix: "Use hashlib.sha256 for integrity, and a password hasher (argon2, bcrypt) for passwords."}
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+  - id: py-tls-verify-disabled
+    languages: [python]
+    severity: WARNING
+    message: TLS certificate checking is switched off, so the connection can be intercepted.
+    metadata: {category: security, cwe: "CWE-295", fix: "Remove verify=False. If a private CA is used, pass its bundle path to verify."}
+    pattern: requests.$M(..., verify=False, ...)
+  - id: py-bare-except
+    languages: [python]
+    severity: INFO
+    message: A bare "except:" also catches KeyboardInterrupt and SystemExit and hides real bugs.
+    metadata: {category: maintainability, fix: "Catch the specific exception you expect, or at least 'except Exception:' and log it."}
+    pattern: |
+      try:
+          ...
+      except:
+          ...
+  - id: py-mutable-default-argument
+    languages: [python]
+    severity: WARNING
+    message: A list or dict default argument is created once and shared between calls, so data leaks from one call to the next.
+    metadata: {category: logic, fix: "Use None as the default and create the list or dict inside the function."}
+    pattern-either:
+      - pattern: |
+          def $F(..., $A=[], ...):
+              ...
+      - pattern: |
+          def $F(..., $A={}, ...):
+              ...
+
+  # ---------- JavaScript / TypeScript ----------
+  - id: js-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: eval and new Function run a string as code. With untrusted input this is code injection.
+    metadata: {category: security, cwe: "CWE-95", fix: "Parse data with JSON.parse, or look the operation up in a map of allowed functions."}
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: js-inner-html
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Assigning to innerHTML (or using dangerouslySetInnerHTML / document.write) inserts raw HTML. Untrusted text here is cross-site scripting.
+    metadata: {category: security, cwe: "CWE-79", fix: "Use textContent, or render through the framework's normal escaping. Sanitize with a vetted library if HTML is really needed."}
+    pattern-either:
+      - pattern: $EL.innerHTML = $X
+      - pattern: $EL.outerHTML = $X
+      - pattern: document.write(...)
+      - pattern: <$TAG dangerouslySetInnerHTML={...} />
+  - id: js-child-process-exec
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: child_process.exec runs its argument through a shell. Building that string from input allows command injection.
+    metadata: {category: security, cwe: "CWE-78", fix: "Use execFile or spawn with an argument array."}
+    pattern-either:
+      - pattern: $CP.exec($CMD, ...)
+      - pattern: $CP.execSync($CMD, ...)
+    pattern-not: $CP.exec("...", ...)
+  - id: js-math-random-secret
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Math.random is predictable and must not be used for tokens, ids or passwords.
+    metadata: {category: security, cwe: "CWE-338", fix: "Use crypto.randomUUID() or crypto.getRandomValues()."}
+    pattern-either:
+      - pattern: const $TOKEN = <... Math.random() ...>
+      - pattern: let $TOKEN = <... Math.random() ...>
+    metavariable-regex:
+      metavariable: $TOKEN
+      regex: (?i).*(token|secret|password|session|nonce|key|otp).*
+  - id: js-loose-equality
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "== converts types before comparing, which gives surprising results (0 == '' is true)."
+    metadata: {category: logic, fix: "Use === and !==."}
+    pattern-either:
+      - pattern: $A == $B
+      - pattern: $A != $B
+    pattern-not-inside: $A == null
+  - id: js-empty-catch
+    languages: [javascript, typescript]
+    severity: INFO
+    message: An empty catch block swallows the error, so failures go unnoticed.
+    metadata: {category: maintainability, fix: "Log or rethrow the error, or handle the specific case you expect."}
+    pattern: |
+      try { ... } catch ($E) { }
+
+  # ---------- PHP ----------
+  - id: php-eval
+    languages: [php]
+    severity: ERROR
+    message: eval runs a string as PHP. With untrusted input this is remote code execution.
+    metadata: {category: security, cwe: "CWE-95", fix: "Remove eval. Decode data with json_decode and call known functions explicitly."}
+    pattern: eval(...);
+  - id: php-unserialize
+    languages: [php]
+    severity: ERROR
+    message: unserialize on untrusted data can create arbitrary objects and trigger code execution.
+    metadata: {category: security, cwe: "CWE-502", fix: "Use json_decode, or pass ['allowed_classes' => false] if the data is your own."}
+    pattern: unserialize($X)
+  - id: php-command-execution
+    languages: [php]
+    severity: ERROR
+    message: A shell command is built from a variable. If it holds user input, an attacker can run their own commands.
+    metadata: {category: security, cwe: "CWE-78", fix: "Avoid the shell; if you must, pass each value through escapeshellarg() or use Symfony Process with an argument array."}
+    pattern-either:
+      - pattern: system($X, ...)
+      - pattern: exec($X, ...)
+      - pattern: shell_exec($X)
+      - pattern: passthru($X, ...)
+    pattern-not: $F("...", ...)
+  - id: php-sql-concatenation
+    languages: [php]
+    severity: ERROR
+    message: A SQL query is built by joining strings with a variable, which allows SQL injection.
+    metadata: {category: security, cwe: "CWE-89", fix: "Use prepared statements with bound parameters (PDO::prepare, or the query builder)."}
+    pattern-either:
+      - pattern: mysqli_query($C, "..." . $X)
+      - pattern: mysqli_query($C, $A . $X)
+      - pattern: $DB->query("..." . $X)
+      - pattern: $DB->query($A . $X)
+  - id: php-weak-password-hash
+    languages: [php]
+    severity: WARNING
+    message: md5/sha1 are far too fast and broken for passwords or security tokens.
+    metadata: {category: security, cwe: "CWE-327", fix: "Use password_hash() and password_verify() for passwords, hash('sha256', ...) for integrity."}
+    pattern-either:
+      - pattern: md5(...)
+      - pattern: sha1(...)
+  - id: php-dynamic-include
+    languages: [php]
+    severity: ERROR
+    message: A file is included from a variable. If it holds user input, an attacker can load files of their choosing.
+    metadata: {category: security, cwe: "CWE-98", fix: "Include only from a fixed list of allowed file names."}
+    pattern-either:
+      - pattern: include $X;
+      - pattern: require $X;
+      - pattern: include_once $X;
+      - pattern: require_once $X;
+    pattern-not: include "...";
+
+  # ---------- Java ----------
+  - id: java-runtime-exec
+    languages: [java]
+    severity: ERROR
+    message: Runtime.exec with a built-up string allows command injection.
+    metadata: {category: security, cwe: "CWE-78", fix: "Use ProcessBuilder with separate arguments and validate each one."}
+    pattern: Runtime.getRuntime().exec($X + $Y, ...)
+  - id: java-sql-concatenation
+    languages: [java]
+    severity: ERROR
+    message: A SQL query is built by string concatenation, which allows SQL injection.
+    metadata: {category: security, cwe: "CWE-89", fix: "Use PreparedStatement with ? placeholders."}
+    pattern-either:
+      - pattern: $S.executeQuery("..." + $X + ...)
+      - pattern: $S.executeQuery("..." + $X)
+      - pattern: $S.executeUpdate("..." + $X + ...)
+      - pattern: $S.executeUpdate("..." + $X)
+  - id: java-weak-hash
+    languages: [java]
+    severity: WARNING
+    message: MD5 and SHA-1 are broken for security use.
+    metadata: {category: security, cwe: "CWE-327", fix: "Use SHA-256, and a password hasher (bcrypt, Argon2) for passwords."}
+    pattern-either:
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("SHA-1")
+      - pattern: MessageDigest.getInstance("SHA1")
+
+  # ---------- C / C++ ----------
+  - id: c-unbounded-copy
+    languages: [c, cpp]
+    severity: ERROR
+    message: This function writes without checking the size of the destination, a classic buffer overflow.
+    metadata: {category: security, cwe: "CWE-120", fix: "Use the bounded form (fgets, strncpy/strlcpy, snprintf) and pass the real buffer size."}
+    pattern-either:
+      - pattern: gets(...)
+      - pattern: strcpy(...)
+      - pattern: strcat(...)
+      - pattern: sprintf(...)
+  - id: c-system-call
+    languages: [c, cpp]
+    severity: WARNING
+    message: system() runs its argument through a shell. Built from input, it allows command injection.
+    metadata: {category: security, cwe: "CWE-78", fix: "Use execve-family calls with an argument array."}
+    pattern: system($X)
+    pattern-not: system("...")
+  - id: c-format-string
+    languages: [c, cpp]
+    severity: ERROR
+    message: A variable is used as the format string. Input containing % directives can read or write memory.
+    metadata: {category: security, cwe: "CWE-134", fix: "Always pass a literal format: printf(\"%s\", value)."}
+    pattern: printf($X)
+    pattern-not: printf("...")

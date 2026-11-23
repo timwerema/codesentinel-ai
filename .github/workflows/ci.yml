@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: PHP tests, style and audit
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: codesentinel_test, POSTGRES_USER: codesentinel, POSTGRES_PASSWORD: ci-only-password }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codesentinel" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DB_HOST: 127.0.0.1
+      DB_USERNAME: codesentinel
+      DB_PASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: "8.3", extensions: "pdo_pgsql, redis, pcntl", coverage: none, tools: composer:v2 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-go@v5
+        with: { go-version: "stable" }
+
+      - name: Install the scanners (so their tests run instead of being skipped)
+        run: |
+          pip install semgrep==1.186.0
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer audit
+      - run: npm ci
+      - run: npm run build
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+      - name: Code style (PHP)
+        run: vendor/bin/pint --test
+      - name: Tests
+        run: php artisan test
+
+  frontend:
+    name: Lint, types and front-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: "8.3", coverage: none, tools: composer:v2 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm }
+      - run: composer install --no-interaction --prefer-dist --no-scripts
+      - run: npm ci
+      - run: npm audit --omit=dev
+      - run: npm run format:check
+      - run: npm run lint:check
+      - run: npm run types
+      - run: npm test
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
