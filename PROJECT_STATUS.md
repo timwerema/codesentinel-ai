@@ -23,7 +23,7 @@ Last updated 23 Nov 2026. "Tested" means an automated test or a real browser run
 | Analysis page: tool status, severity summary, filters, code snippets, live status polling, empty/error/loading states | browser run at 1440 px and 390 px, `findings.test.ts`, `badges.test.tsx` |
 | Demo seeder: labelled demo account and analysis of a bundled vulnerable sample | run manually: 7 scanner findings |
 
-Totals on 23 Nov 2026: 89 backend tests (392 assertions) and 13 front-end tests passing; Pint, Prettier, ESLint and TypeScript clean.
+Totals on 23 Nov 2026: 90 backend tests (393 assertions) and 13 front-end tests passing; Pint, Prettier, ESLint and TypeScript clean.
 
 ## Implemented, only partly verified
 
@@ -32,7 +32,7 @@ Totals on 23 Nov 2026: 89 backend tests (392 assertions) and 13 front-end tests 
 | Claude review (official Anthropic PHP SDK, structured JSON output, schema validation, token usage, cost estimate, refusal handling, retries, timeout) | Everything around the API call is tested with a fake gateway. **The live API call itself has never been run**: no key was available. |
 | Side-by-side original/suggested view | The line-replacement logic is unit tested. It only appears for real AI suggestions with replacement code, so it has not been seen with live data. |
 | Docker Compose and Dockerfile | Written, **never built or run** (no Docker daemon available). |
-| GitHub Actions CI | Written, **never run** (the repository is not on GitHub yet). |
+| GitHub Actions CI | Runs on every push. The first run caught a real bug (scanners installed outside /usr/bin were not found), fixed the same day. |
 | macOS setup instructions | Written from documentation, **not run on a Mac**. |
 
 ## Planned (not started)
@@ -48,6 +48,6 @@ Totals on 23 Nov 2026: 89 backend tests (392 assertions) and 13 front-end tests 
 
 | Item | Blocked by |
 |---|---|
-| Pushing the code to GitHub | This build session could not create or attach a repository. An empty repository is needed. |
+
 | Verifying the Claude call | An Anthropic API key in the server's `.env`. |
 | Verifying Docker | A machine with Docker. |

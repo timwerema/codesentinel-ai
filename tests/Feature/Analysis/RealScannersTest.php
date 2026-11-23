@@ -116,6 +116,27 @@ class RealScannersTest extends TestCase
         $this->assertSame((string) config('codesentinel.scanners.drop_to_uid'), $uid);
     }
 
+    public function test_a_scanner_installed_outside_the_usual_folders_is_still_found_and_can_run_its_helpers(): void
+    {
+        // Like pip --user, Homebrew or Go's bin folder: on the app's PATH but not in /usr/bin.
+        $bin = $this->workspace.'/tools';
+        mkdir($bin);
+        file_put_contents($bin.'/fake-helper', "#!/bin/sh\necho helper-ran\n");
+        file_put_contents($bin.'/fake-scanner', "#!/bin/sh\nfake-helper\n");
+        chmod($bin.'/fake-helper', 0755);
+        chmod($bin.'/fake-scanner', 0755);
+        $old = getenv('PATH');
+        putenv('PATH='.$bin.':'.$old);
+
+        try {
+            $out = app(Sandbox::class)->run(['fake-scanner'], $this->workspace, $this->workspace.'/home')->output();
+        } finally {
+            putenv('PATH='.$old);
+        }
+
+        $this->assertSame('helper-ran', trim($out));
+    }
+
     public function test_a_scanner_that_runs_too_long_is_stopped(): void
     {
         config(['codesentinel.scanners.timeout_seconds' => 1]);
@@ -133,7 +154,7 @@ class RealScannersTest extends TestCase
         $gitleaks = app(GitleaksScanner::class)->scan($this->workspace);
 
         $this->assertFalse($semgrep->ok);
-        $this->assertNotEmpty($semgrep->error);
+        $this->assertStringContainsString('not installed', (string) $semgrep->error);
         $this->assertSame([], $semgrep->findings);
         $this->assertFalse($gitleaks->ok);
     }

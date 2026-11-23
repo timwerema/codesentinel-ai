@@ -13,7 +13,7 @@ Only what is implemented and verified in this repository (see PROJECT_STATUS.md)
 - Ran third-party scanners on untrusted input in restricted subprocesses: argument-array commands, a clean environment with no application secrets, timeouts, CPU and process limits, and an unprivileged user.
 - Designed an AI provider interface with a Claude implementation using structured JSON output; treated uploaded code as untrusted data and validated every model reply against a schema before storing it as an unverified suggestion.
 - Enforced per-user isolation with policies and non-guessable ids, rate limits, strict upload validation, and a nonce-based Content-Security-Policy.
-- Covered the upload gate, access control, pipeline failure modes and the real scanners with 89 backend and 13 front-end automated tests.
+- Covered the upload gate, access control, pipeline failure modes and the real scanners with 90 backend and 13 front-end automated tests.
 
 ## Do not claim (yet)
 

@@ -32,6 +32,16 @@ class Sandbox
         $finder = new ExecutableFinder;
         $prefix = [];
 
+        // Find the program with the app's own PATH and run it by absolute path. The child gets a
+        // short fixed PATH plus the program's own folder (Semgrep needs its sibling programs), so
+        // tools installed outside /usr/bin (pip --user, Homebrew, Go's bin folder) still work.
+        $binary = str_contains($command[0], '/') ? (is_executable($command[0]) ? $command[0] : null) : $finder->find($command[0]);
+        if ($binary === null) {
+            throw new ScannerNotFound($command[0]);
+        }
+        $command[0] = $binary;
+        $path = implode(':', array_unique([dirname($binary), '/usr/local/bin', '/usr/bin', '/bin']));
+
         if ($this->shouldDropPrivileges() && ($setpriv = $finder->find('setpriv'))) {
             array_push($prefix, $setpriv, '--reuid='.$c['drop_to_uid'], '--regid='.$c['drop_to_gid'], '--clear-groups', '--no-new-privs');
         }
@@ -44,7 +54,7 @@ class Sandbox
         return Process::path($cwd)
             ->timeout($c['timeout_seconds'])
             ->env(array_merge(self::blankInheritedEnv(), [
-                'PATH' => '/usr/local/bin:/usr/bin:/bin',
+                'PATH' => $path,
                 'HOME' => $home,
                 'XDG_CACHE_HOME' => $home.'/.cache',
                 'XDG_CONFIG_HOME' => $home.'/.config',

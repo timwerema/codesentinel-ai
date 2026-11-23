@@ -87,6 +87,10 @@ class SemgrepScanner implements Scanner
 
     public static function reason(Throwable $e): string
     {
-        return str_contains($e::class, 'Timed') ? 'The scanner took too long and was stopped.' : 'The scanner could not be started. Is it installed?';
+        return match (true) {
+            $e instanceof ScannerNotFound => 'The scanner is not installed on the server, or not on its PATH.',
+            str_contains($e::class, 'Timed') => 'The scanner took too long and was stopped.',
+            default => 'The scanner could not be started.',
+        };
     }
 }
